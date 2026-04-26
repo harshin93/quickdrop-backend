@@ -1,4 +1,4 @@
-from shared.db.session import SessionLocal
+from services.auth_service.app.db.session import SessionLocal
 
 
 def get_db():
