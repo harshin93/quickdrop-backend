@@ -10,3 +10,5 @@ venv/
 .vscode/
 .DS_Store
 node_modules/
+services/upload_service/uploads/*
+!services/upload_service/uploads/.gitkeep

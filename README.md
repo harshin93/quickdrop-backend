@@ -261,6 +261,8 @@ services/
 * Local file storage
 * File metadata stored in PostgreSQL
 * JWT-based user identification
+* File retrieval endpoint
+* User-specific access control (only owner can access files)
 * Microservice communication with Auth Service
 
 ---
@@ -271,6 +273,7 @@ services/
 2. Auth Service returns JWT token
 3. Upload Service validates JWT
 4. File is uploaded and linked to authenticated `user_id`
+5. User can only retrieve their own files
 
 ---
 
