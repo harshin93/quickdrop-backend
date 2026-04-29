@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🚀 QuickDrop Backend
 
 QuickDrop is a backend system built to demonstrate **real-world backend engineering concepts**, including authentication, file handling, and microservices architecture.
@@ -172,3 +173,157 @@ Harshin Mehta
 ⭐ Notes
 
 This project is being built incrementally to simulate real-world backend development. Each phase introduces new concepts and improves system design.
+=======
+# QuickDrop Backend 🚀
+
+A microservices-based backend system inspired by real-world platforms like DoorDash.
+Built using FastAPI, PostgreSQL, and JWT authentication to simulate production-level backend architecture.
+
+---
+
+## 📌 Project Overview
+
+QuickDrop is designed to demonstrate:
+
+* Microservices architecture
+* Authentication using JWT
+* Service-to-service communication
+* File upload and storage system
+* Database integration with PostgreSQL
+
+---
+
+## 🏗️ Architecture
+
+### 1. Auth Service
+
+* User registration & login
+* Password hashing using bcrypt
+* JWT token generation
+* Protected routes (`/auth/me`)
+
+### 2. Upload Service
+
+* File upload endpoint
+* Local file storage
+* PostgreSQL metadata storage
+* JWT validation (integrates with Auth Service)
+* Associates uploaded files with authenticated users
+
+---
+
+## ⚙️ Tech Stack
+
+* **Backend:** FastAPI
+* **Database:** PostgreSQL
+* **ORM:** SQLAlchemy
+* **Authentication:** JWT (python-jose)
+* **Security:** Passlib (bcrypt)
+* **Server:** Uvicorn
+
+---
+
+## 📂 Project Structure
+
+```
+services/
+├── auth_service/
+│   └── app/
+├── upload_service/
+│   └── app/
+```
+
+---
+
+## 🚀 Completed Phases
+
+### ✅ Phase 1: FastAPI Setup
+
+* Basic FastAPI application
+* Health endpoint
+
+### ✅ Phase 2: Auth Service Skeleton
+
+* API structure setup
+* Initial routes
+
+### ✅ Phase 3: Full Authentication System
+
+* PostgreSQL integration
+* User model & table
+* Password hashing
+* JWT token generation
+* Protected endpoints
+
+### ✅ Phase 4: Upload Service
+
+* File upload endpoint (`/api/v1/uploads`)
+* Local file storage
+* File metadata stored in PostgreSQL
+* JWT-based user identification
+* Microservice communication with Auth Service
+
+---
+
+## 🔄 API Flow
+
+1. User logs in via Auth Service
+2. Auth Service returns JWT token
+3. Upload Service validates JWT
+4. File is uploaded and linked to authenticated `user_id`
+
+---
+
+## 🧪 Example Response
+
+```json
+{
+  "message": "File uploaded successfully",
+  "file": {
+    "id": 3,
+    "user_id": 2,
+    "filename": "error.txt",
+    "content_type": "text/plain"
+  }
+}
+```
+
+---
+
+## ▶️ How to Run
+
+### Start Auth Service
+
+```
+python -m uvicorn services.auth_service.app.main:app --reload --port 8000
+```
+
+### Start Upload Service
+
+```
+python -m uvicorn services.upload_service.app.main:app --reload --port 8001
+```
+
+---
+
+## 📈 Current Status
+
+* Auth Service: ✅ Complete
+* Upload Service: ✅ Complete
+* JWT Integration: ✅ Working
+* PostgreSQL Integration: ✅ Working
+
+---
+
+## 🔜 Next Steps
+
+* File retrieval endpoint
+* User-specific file access (authorization)
+* API Gateway
+* Docker & Kubernetes deployment
+
+---
+
+## 💡 Notes
+
+This project is being built step-by-step to simulate a real production backend system and strengthen backend engineering fundamentals.

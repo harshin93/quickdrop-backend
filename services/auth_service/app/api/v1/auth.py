@@ -63,7 +63,7 @@ def login_user(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    access_token = create_access_token(subject=user.email)
+    access_token = create_access_token(subject=str(user.id))
 
     return {
         "access_token": access_token,
@@ -89,7 +89,7 @@ def swagger_login(
             detail="Invalid email or password",
         )
 
-    access_token = create_access_token(subject=user.email)
+    access_token = create_access_token(subject=str(user.id))
 
     return {
         "access_token": access_token,
