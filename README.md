@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🚀 QuickDrop Backend
 
 QuickDrop is a backend system built to demonstrate **real-world backend engineering concepts**, including authentication, file handling, and microservices architecture.

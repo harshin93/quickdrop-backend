@@ -4,6 +4,9 @@ from services.upload_service.app.api.v1.router import api_router
 from services.upload_service.app.db.base import Base
 from services.upload_service.app.db.session import engine
 from services.upload_service.app.models.file import FileMetadata
+from services.upload_service.app.core.logging import configure_logging
+
+configure_logging()
 
 app = FastAPI(
     title="QuickDrop Upload Service",
