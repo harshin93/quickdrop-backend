@@ -1,13 +1,16 @@
 import logging
-import shutil
-from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from services.upload_service.app.core.security import get_current_user_id
+from services.upload_service.app.core.storage import (
+    get_file_stream_from_storage,
+    upload_file_to_storage,
+)
 from services.upload_service.app.db.dependencies import get_db
 from services.upload_service.app.models.file import FileMetadata
 
@@ -15,14 +18,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
-UPLOAD_DIR = Path("services/upload_service/uploads")
+
+def get_upload_file_size(file: UploadFile) -> int:
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    return file_size
 
 
 @router.post("/")
 def upload_file(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     logger.info(
         "Upload attempt user_id=%s filename=%s content_type=%s",
@@ -35,23 +43,23 @@ def upload_file(
         logger.warning("Upload failed: empty filename user_id=%s", user_id)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Filename is required"
+            detail="Filename is required",
         )
 
     try:
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        file_size = get_upload_file_size(file)
 
-        file_path = UPLOAD_DIR / file.filename
+        object_key = f"users/{user_id}/{uuid4()}-{file.filename}"
 
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        file_size = file_path.stat().st_size
+        upload_file_to_storage(
+            file=file,
+            object_key=object_key,
+        )
 
         file_record = FileMetadata(
             user_id=user_id,
             filename=file.filename,
-            file_path=str(file_path),
+            file_path=object_key,
             content_type=file.content_type,
             file_size=file_size,
         )
@@ -61,11 +69,12 @@ def upload_file(
         db.refresh(file_record)
 
         logger.info(
-            "Upload successful user_id=%s file_id=%s filename=%s file_size=%s",
+            "Upload successful user_id=%s file_id=%s filename=%s file_size=%s object_key=%s",
             user_id,
             file_record.id,
             file_record.filename,
             file_record.file_size,
+            file_record.file_path,
         )
 
         return {
@@ -78,7 +87,7 @@ def upload_file(
                 "file_size": file_record.file_size,
                 "file_path": file_record.file_path,
                 "created_at": file_record.created_at,
-            }
+            },
         }
 
     except SQLAlchemyError:
@@ -90,25 +99,25 @@ def upload_file(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not save file metadata"
+            detail="Could not save file metadata",
         )
 
-    except OSError:
+    except RuntimeError:
         logger.exception(
-            "Upload failed: file system error user_id=%s filename=%s",
+            "Upload failed: object storage error user_id=%s filename=%s",
             user_id,
             file.filename,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not save file"
+            detail="Could not save file",
         )
 
 
 @router.get("/")
 def list_my_files(
     user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     logger.info("List files request user_id=%s", user_id)
 
@@ -140,14 +149,14 @@ def list_my_files(
                     "created_at": file.created_at,
                 }
                 for file in files
-            ]
+            ],
         }
 
     except SQLAlchemyError:
         logger.exception("List files failed: database error user_id=%s", user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not retrieve files"
+            detail="Could not retrieve files",
         )
 
 
@@ -155,7 +164,7 @@ def list_my_files(
 def download_my_file(
     file_id: int,
     user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     logger.info(
         "Download request user_id=%s file_id=%s",
@@ -168,7 +177,7 @@ def download_my_file(
             db.query(FileMetadata)
             .filter(
                 FileMetadata.id == file_id,
-                FileMetadata.user_id == user_id
+                FileMetadata.user_id == user_id,
             )
             .first()
         )
@@ -181,38 +190,41 @@ def download_my_file(
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
+                detail="File not found",
             )
 
-        file_path = Path(file_record.file_path)
-
-        if not file_path.exists():
-            logger.error(
-                "Download failed: file missing from storage user_id=%s file_id=%s path=%s",
-                user_id,
-                file_id,
-                file_record.file_path,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="File missing from storage"
-            )
+        file_stream = get_file_stream_from_storage(file_record.file_path)
 
         logger.info(
-            "Download successful user_id=%s file_id=%s filename=%s",
+            "Download successful user_id=%s file_id=%s filename=%s object_key=%s",
             user_id,
             file_id,
             file_record.filename,
+            file_record.file_path,
         )
 
-        return FileResponse(
-            path=file_path,
-            filename=file_record.filename,
-            media_type=file_record.content_type or "application/octet-stream"
+        return StreamingResponse(
+            file_stream.iter_chunks(chunk_size=8192),
+            media_type=file_record.content_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{file_record.filename}"'
+            },
         )
 
     except HTTPException:
         raise
+
+    except FileNotFoundError:
+        logger.exception(
+            "Download failed: file missing from object storage user_id=%s file_id=%s object_key=%s",
+            user_id,
+            file_id,
+            file_record.file_path if "file_record" in locals() else None,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File missing from storage",
+        )
 
     except SQLAlchemyError:
         logger.exception(
@@ -222,5 +234,16 @@ def download_my_file(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not retrieve file"
+            detail="Could not retrieve file",
+        )
+
+    except RuntimeError:
+        logger.exception(
+            "Download failed: object storage error user_id=%s file_id=%s",
+            user_id,
+            file_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve file",
         )

@@ -27,6 +27,38 @@ services:
       - upload_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:latest
+    container_name: quickdrop-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: quickdrop_minio_user
+      MINIO_ROOT_PASSWORD: quickdrop_minio_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  minio_create_bucket:
+    image: minio/mc:latest
+    container_name: quickdrop-minio-create-bucket
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 quickdrop_minio_user quickdrop_minio_password;
+      do
+        echo 'Waiting for MinIO...';
+        sleep 2;
+      done;
+      mc mb -p local/quickdrop-uploads;
+      mc anonymous set none local/quickdrop-uploads;
+      echo 'MinIO bucket quickdrop-uploads is ready.';
+      exit 0;
+      "
+
   auth_service:
     build:
       context: .
@@ -54,12 +86,17 @@ services:
       UPLOAD_DATABASE_URL: postgresql+psycopg2://quickdrop_upload_user:quickdrop_upload_password@upload_postgres:5432/quickdrop_upload
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-change-me}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: quickdrop_minio_user
+      S3_SECRET_KEY: quickdrop_minio_password
+      S3_BUCKET_NAME: quickdrop-uploads
+      S3_REGION_NAME: us-east-1
     depends_on:
       - upload_postgres
+      - minio
+      - minio_create_bucket
     ports:
       - "8001:8001"
-    volumes:
-      - ./services/upload_service/uploads:/app/services/upload_service/uploads
     restart: unless-stopped
 
   gateway_service:
@@ -81,3 +118,4 @@ services:
 volumes:
   auth_postgres_data:
   upload_postgres_data:
+  minio_data:
