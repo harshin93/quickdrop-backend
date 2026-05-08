@@ -292,6 +292,26 @@ Completed:
 - Logged Upload Service unavailable errors
 - Improved Swagger route summaries for Gateway proxy routes
 
+### Phase 7: Docker Compose / Local Orchestration
+
+Completed:
+
+- Added shared root Dockerfile for service containers
+- Added runtime-only Python dependencies file
+- Added Docker Compose orchestration for Auth Service, Upload Service, Gateway Service, Auth PostgreSQL, and Upload PostgreSQL
+- Configured Docker networking so services communicate by service name
+- Configured Gateway to call Auth Service at `http://auth_service:8000`
+- Configured Gateway to call Upload Service at `http://upload_service:8001`
+- Added separate PostgreSQL containers for Auth and Upload databases
+- Confirmed register works through Gateway in Docker Compose
+- Confirmed login works through Gateway in Docker Compose
+- Confirmed `/auth/me` works through Gateway in Docker Compose
+- Confirmed file upload works through Gateway in Docker Compose
+- Confirmed file listing works through Gateway in Docker Compose
+- Confirmed file download works through Gateway in Docker Compose
+- Confirmed missing-token protection still works
+- Confirmed Gateway request logs show request ID, downstream URL, downstream status code, final status code, and duration
+
 Example Gateway log flow:
 
 ```text

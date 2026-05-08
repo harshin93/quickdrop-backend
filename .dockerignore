@@ -1,18 +1,24 @@
-__pycache__/
+.git
+.venv
+__pycache__
 *.pyc
 *.pyo
 *.pyd
+.Python
 
 .env
 .env.*
 !.env.example
 
-venv/
-.venv/
-.idea/
-.vscode/
-.DS_Store
-node_modules/
+error.txt
+hello.txt
+newfile.txt
 
 services/upload_service/uploads/*
 !services/upload_service/uploads/.gitkeep
+
+.DS_Store
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
