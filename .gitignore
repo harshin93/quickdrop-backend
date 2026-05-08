@@ -16,3 +16,4 @@ node_modules/
 
 services/upload_service/uploads/*
 !services/upload_service/uploads/.gitkeep
+.pytest_cache/

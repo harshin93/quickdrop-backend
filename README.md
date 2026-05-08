@@ -1,25 +1,28 @@
-# QuickDrop Backend 🚀
+# QuickDrop Backend
 
-QuickDrop is a microservices-based backend system built with FastAPI to demonstrate real-world backend engineering concepts such as authentication, secure file upload, API Gateway routing, service separation, request tracing, and production-style observability.
+QuickDrop is a microservices-style backend system built with **FastAPI**. It demonstrates production-oriented backend engineering concepts such as service separation, JWT authentication, secure password hashing, API Gateway routing, PostgreSQL persistence, S3-compatible object storage, request tracing, structured logging, Docker Compose orchestration, and automated integration testing.
 
-The project is being developed step-by-step to simulate how backend systems are designed, secured, scaled, and prepared for production.
+The project is being built incrementally in phases to simulate how a backend system evolves from a simple API into a more realistic distributed backend.
 
 ---
 
 ## Project Goal
 
-The goal of QuickDrop is to build a backend system that demonstrates:
+The goal of QuickDrop is to build an interview-ready backend system that demonstrates:
 
-- Microservices architecture
-- JWT-based authentication
-- Secure password hashing
-- PostgreSQL database integration
-- SQLAlchemy ORM usage
-- File upload and metadata storage
-- User-based file ownership checks
-- API Gateway routing
-- Request logging and observability
-- Production-readiness concepts
+* Microservices-style architecture
+* API Gateway routing
+* JWT-based authentication
+* Secure password hashing with bcrypt
+* PostgreSQL database integration
+* SQLAlchemy ORM usage
+* Authenticated file upload, listing, and download
+* User-based file ownership checks
+* S3-compatible object storage using MinIO
+* Request tracing with `X-Request-ID`
+* Production-style logging and error handling
+* Docker Compose local orchestration
+* Automated integration testing with Pytest
 
 ---
 
@@ -27,80 +30,44 @@ The goal of QuickDrop is to build a backend system that demonstrates:
 
 ```text
 Client
-  ↓
+  |
+  v
 Gateway Service :8002
-  ├── /api/v1/auth/*    → Auth Service :8000
-  └── /api/v1/uploads/* → Upload Service :8001
+  |
+  |-- /api/v1/auth/*    --> Auth Service :8000 --> Auth PostgreSQL :5433
+  |
+  |-- /api/v1/uploads/* --> Upload Service :8001 --> Upload PostgreSQL :5434
+                                           |
+                                           v
+                                      MinIO Object Storage :9000
 ```
 
-The Gateway Service acts as the single public entry point for the system.
+The **Gateway Service** is the public entry point for the system. Clients call the Gateway, and the Gateway forwards requests to the correct internal service.
 
-Clients do not need to call Auth Service or Upload Service directly. They send requests to the Gateway, and the Gateway forwards those requests to the correct downstream service.
+The **Auth Service** owns user registration, login, password hashing, JWT creation, and protected user profile access.
+
+The **Upload Service** owns authenticated file upload, metadata persistence, MinIO object storage, file listing, file download, and ownership checks.
 
 ---
 
-## Services
-
-### Auth Service
-
-The Auth Service is responsible for user authentication.
-
-Responsibilities:
-
-- User registration
-- User login
-- Password hashing using bcrypt
-- JWT token generation
-- JWT token validation
-- Protected `/auth/me` endpoint
-- PostgreSQL user storage
-
-Default local port:
-
-```text
-8000
-```
-
----
-
-### Upload Service
-
-The Upload Service is responsible for file upload and file access.
-
-Responsibilities:
-
-- Upload files
-- Store files locally
-- Store file metadata in PostgreSQL
-- Validate JWT tokens
-- Extract authenticated `user_id` from JWT
-- List files owned by the authenticated user
-- Download files owned by the authenticated user
-- Prevent users from accessing files that do not belong to them
-
-Default local port:
-
-```text
-8001
-```
-
----
+## Active Services
 
 ### Gateway Service
 
-The Gateway Service is responsible for routing client requests to the correct internal service.
+The Gateway Service routes external client requests to internal services.
 
 Responsibilities:
 
-- Route `/api/v1/auth/*` requests to Auth Service
-- Route `/api/v1/uploads/*` requests to Upload Service
-- Forward `Authorization` headers
-- Forward `X-Request-ID` headers
-- Generate request IDs when missing
-- Log incoming requests
-- Log downstream service responses
-- Log request duration
-- Return clean `503 Service Unavailable` responses when downstream services are unavailable
+* Route `/api/v1/auth/*` requests to Auth Service
+* Route `/api/v1/uploads/*` requests to Upload Service
+* Forward `Authorization` headers
+* Forward and return `X-Request-ID` headers
+* Generate a request ID when the client does not provide one
+* Log incoming requests
+* Log downstream service calls
+* Log downstream response status codes
+* Log request duration
+* Return clean `503 Service Unavailable` responses when downstream services are unavailable
 
 Default local port:
 
@@ -110,17 +77,103 @@ Default local port:
 
 ---
 
+### Auth Service
+
+The Auth Service is responsible for authentication and user identity.
+
+Responsibilities:
+
+* Register users
+* Hash passwords using bcrypt
+* Store user records in PostgreSQL
+* Login users
+* Verify passwords
+* Generate JWT access tokens
+* Store the authenticated user ID in the JWT `sub` claim
+* Validate JWTs for protected routes
+* Expose protected `/auth/me` endpoint
+
+Default local port:
+
+```text
+8000
+```
+
+Database port exposed on host:
+
+```text
+5433
+```
+
+---
+
+### Upload Service
+
+The Upload Service is responsible for authenticated file operations.
+
+Responsibilities:
+
+* Validate JWT Bearer tokens
+* Extract authenticated `user_id` from JWT `sub` claim
+* Upload files to MinIO object storage
+* Store file metadata in PostgreSQL
+* Store MinIO object keys in `FileMetadata.file_path`
+* List files owned by the authenticated user
+* Download files owned by the authenticated user
+* Prevent users from accessing files that do not belong to them
+
+Default local port:
+
+```text
+8001
+```
+
+Database port exposed on host:
+
+```text
+5434
+```
+
+MinIO API port:
+
+```text
+9000
+```
+
+MinIO console port:
+
+```text
+9001
+```
+
+Default MinIO bucket:
+
+```text
+quickdrop-uploads
+```
+
+Object key format:
+
+```text
+users/{user_id}/{uuid}-{filename}
+```
+
+---
+
 ## Tech Stack
 
-- **Backend Framework:** FastAPI
-- **Database:** PostgreSQL
-- **ORM:** SQLAlchemy
-- **Authentication:** JWT using `python-jose`
-- **Password Hashing:** bcrypt using `passlib`
-- **HTTP Client:** httpx
-- **Server:** Uvicorn
-- **API Testing:** Swagger UI, curl
-- **Language:** Python
+* **Language:** Python
+* **Framework:** FastAPI
+* **Server:** Uvicorn
+* **Database:** PostgreSQL
+* **ORM:** SQLAlchemy
+* **Authentication:** JWT with `python-jose`
+* **Password Hashing:** bcrypt with `passlib`
+* **Object Storage:** MinIO using `boto3`
+* **HTTP Client:** httpx
+* **Testing:** Pytest
+* **Containerization:** Docker and Docker Compose
+* **Validation/Settings:** Pydantic and pydantic-settings
 
 ---
 
@@ -129,195 +182,412 @@ Default local port:
 ```text
 services/
 ├── auth_service/
-│   └── app/
-│       ├── api/
-│       ├── core/
-│       ├── db/
-│       ├── endpoints/
-│       ├── models/
-│       ├── schemas/
-│       └── main.py
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── endpoints/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   └── main.py
+│   ├── Dockerfile
+│   └── requirements.txt
 │
 ├── upload_service/
 │   └── app/
 │       ├── api/
 │       ├── core/
+│       │   ├── config.py
+│       │   ├── logging.py
+│       │   ├── security.py
+│       │   └── storage.py
 │       ├── db/
 │       ├── models/
 │       ├── schemas/
 │       └── main.py
 │
-└── gateway_service/
-    └── app/
-        ├── api/
-        ├── core/
-        │   ├── config.py
-        │   └── logging.py
-        ├── endpoints/
-        │   ├── auth_proxy.py
-        │   ├── health.py
-        │   └── upload_proxy.py
-        └── main.py
+├── gateway_service/
+│   └── app/
+│       ├── api/
+│       ├── core/
+│       │   ├── config.py
+│       │   └── logging.py
+│       ├── endpoints/
+│       │   ├── auth_proxy.py
+│       │   ├── health.py
+│       │   └── upload_proxy.py
+│       └── main.py
+│
+tests/
+├── test_auth_errors.py
+├── test_auth_flow.py
+├── test_gateway_flow.py
+├── test_health.py
+├── test_upload_errors.py
+└── test_upload_flow.py
 ```
 
 ---
 
-## Completed Phases
+## API Gateway Routes
 
-### Phase 1: FastAPI Setup
+All normal client requests should go through the Gateway Service.
 
-Completed:
-
-- Initialized FastAPI application
-- Created basic health check endpoint
-- Verified local server startup
-
----
-
-### Phase 2: Auth Service Skeleton
-
-Completed:
-
-- Created Auth Service structure
-- Added API router structure
-- Added initial `/register` and `/login` routes
-- Added health endpoint
-- Confirmed routes appear in Swagger UI
-
----
-
-### Phase 3: Full Authentication System
-
-Completed:
-
-- Integrated PostgreSQL with Auth Service
-- Added SQLAlchemy ORM setup
-- Created user model
-- Created user schemas
-- Added password hashing using bcrypt
-- Added password verification
-- Added JWT token generation
-- Added JWT token validation
-- Added login endpoint
-- Added register endpoint
-- Added protected `/auth/me` endpoint
-- Confirmed protected routes reject missing or invalid tokens
-- Confirmed Swagger authorization flow works
-
-JWT rule:
+Base URL:
 
 ```text
-JWT sub = user_id
+http://127.0.0.1:8002
 ```
 
-The `sub` claim stores the authenticated user's `user_id`.
+### Health
+
+```http
+GET /api/v1/health/
+```
+
+### Authentication
+
+```http
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+GET  /api/v1/auth/me
+```
+
+### File Uploads
+
+```http
+POST /api/v1/uploads/
+GET  /api/v1/uploads/
+GET  /api/v1/uploads/{file_id}
+```
 
 ---
 
-### Phase 4: Upload Service
-
-Completed:
-
-- Created separate Upload Service microservice
-- Added upload endpoint
-- Added local file storage
-- Added PostgreSQL metadata storage
-- Added file metadata model
-- Added JWT validation inside Upload Service
-- Extracted real authenticated `user_id` from JWT
-- Linked uploaded files to authenticated users
-- Added file list endpoint
-- Added file retrieval/download endpoint
-- Added ownership check so users can only access their own files
-- Confirmed missing tokens are rejected
-- Confirmed invalid tokens are rejected
-- Confirmed users cannot access files owned by another user
-
----
-
-### Phase 5: API Gateway
-
-Completed:
-
-- Created separate Gateway Service
-- Gateway runs on port `8002`
-- Auth Service runs on port `8000`
-- Upload Service runs on port `8001`
-- Gateway routes `/api/v1/auth/*` to Auth Service
-- Gateway routes `/api/v1/uploads/*` to Upload Service
-- Confirmed register works through Gateway
-- Confirmed login works through Gateway
-- Confirmed `/auth/me` works through Gateway
-- Confirmed file upload works through Gateway
-- Confirmed file list works through Gateway
-- Confirmed file download works through Gateway
-- Confirmed missing token is rejected through Gateway
-- Confirmed invalid token is rejected through Gateway
-- Confirmed JWT `Authorization` header is forwarded correctly
-- Confirmed Upload Service ownership security is preserved through Gateway
-
-Gateway routing:
+## Authentication Flow
 
 ```text
-Client
-  ↓
-Gateway Service :8002
-  ├── /api/v1/auth/*    → Auth Service :8000
-  └── /api/v1/uploads/* → Upload Service :8001
+1. Client registers through Gateway.
+2. Gateway forwards request to Auth Service.
+3. Auth Service hashes the password and stores the user in PostgreSQL.
+4. Client logs in through Gateway.
+5. Auth Service verifies the password.
+6. Auth Service creates a JWT access token.
+7. JWT stores user_id in the sub claim.
+8. Client sends the JWT in the Authorization header.
+9. Gateway forwards the Authorization header to downstream services.
+10. Upload Service validates the JWT.
+11. Upload Service extracts user_id from the JWT sub claim.
+12. Upload Service performs user-specific file operations.
+```
+
+Authorization header format:
+
+```http
+Authorization: Bearer <access_token>
 ```
 
 ---
 
-### Phase 6: Gateway Logging, Observability, and Production Polish
+## File Upload Flow
 
-Completed:
+```text
+1. Authenticated client uploads file through Gateway.
+2. Gateway forwards multipart request to Upload Service.
+3. Upload Service validates JWT.
+4. Upload Service extracts user_id from JWT sub claim.
+5. Upload Service creates a MinIO object key.
+6. Upload Service uploads file bytes to MinIO.
+7. Upload Service stores metadata in PostgreSQL.
+8. Upload Service stores the MinIO object key in file_path.
+9. User can list and download only their own files.
+```
 
-- Added centralized Gateway logging configuration
-- Added request logging middleware to Gateway Service
-- Logged every incoming request
-- Logged HTTP method
-- Logged request path
-- Logged response status code
-- Logged request duration in milliseconds
-- Added `X-Request-ID` support
-- Preserved incoming `X-Request-ID` when provided by the client
-- Generated a new request ID when the client does not provide one
-- Returned `X-Request-ID` in Gateway responses
-- Forwarded `X-Request-ID` to Auth Service
-- Forwarded `X-Request-ID` to Upload Service
-- Logged downstream Auth Service target URLs
-- Logged downstream Upload Service target URLs
-- Logged downstream response status codes
-- Logged Auth Service unavailable errors
-- Logged Upload Service unavailable errors
-- Improved Swagger route summaries for Gateway proxy routes
+Example object key:
 
-### Phase 7: Docker Compose / Local Orchestration
+```text
+users/12/550e8400-e29b-41d4-a716-446655440000-example.txt
+```
 
-Completed:
+---
 
-- Added shared root Dockerfile for service containers
-- Added runtime-only Python dependencies file
-- Added Docker Compose orchestration for Auth Service, Upload Service, Gateway Service, Auth PostgreSQL, and Upload PostgreSQL
-- Configured Docker networking so services communicate by service name
-- Configured Gateway to call Auth Service at `http://auth_service:8000`
-- Configured Gateway to call Upload Service at `http://upload_service:8001`
-- Added separate PostgreSQL containers for Auth and Upload databases
-- Confirmed register works through Gateway in Docker Compose
-- Confirmed login works through Gateway in Docker Compose
-- Confirmed `/auth/me` works through Gateway in Docker Compose
-- Confirmed file upload works through Gateway in Docker Compose
-- Confirmed file listing works through Gateway in Docker Compose
-- Confirmed file download works through Gateway in Docker Compose
-- Confirmed missing-token protection still works
-- Confirmed Gateway request logs show request ID, downstream URL, downstream status code, final status code, and duration
+## Local Development Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/harshin93/quickdrop-backend.git
+cd quickdrop-backend
+```
+
+### 2. Create and activate virtual environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install runtime dependencies
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### 4. Install development dependencies
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+---
+
+## Running with Docker Compose
+
+The recommended way to run the full local system is Docker Compose.
+
+Start all services:
+
+```bash
+docker compose up -d
+```
+
+Check running containers:
+
+```bash
+docker compose ps
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+View only Gateway logs:
+
+```bash
+docker compose logs -f gateway_service
+```
+
+Stop services:
+
+```bash
+docker compose down
+```
+
+Stop services and remove volumes:
+
+```bash
+docker compose down -v
+```
+
+Use `docker compose down -v` carefully because it removes local PostgreSQL and MinIO data volumes.
+
+---
+
+## Docker Compose Services
+
+| Service               | Container                       |      Host Port | Purpose                            |
+| --------------------- | ------------------------------- | -------------: | ---------------------------------- |
+| `gateway_service`     | `quickdrop-gateway-service`     |         `8002` | Public API entry point             |
+| `auth_service`        | `quickdrop-auth-service`        |         `8000` | Authentication and JWT issuance    |
+| `upload_service`      | `quickdrop-upload-service`      |         `8001` | File upload/list/download          |
+| `auth_postgres`       | `quickdrop-auth-postgres`       |         `5433` | Auth database                      |
+| `upload_postgres`     | `quickdrop-upload-postgres`     |         `5434` | Upload metadata database           |
+| `minio`               | `quickdrop-minio`               | `9000`, `9001` | Object storage and console         |
+| `minio_create_bucket` | `quickdrop-minio-create-bucket` |            N/A | Creates `quickdrop-uploads` bucket |
+
+---
+
+## MinIO
+
+MinIO is used as a local S3-compatible object storage service.
+
+Default local endpoints:
+
+```text
+MinIO API:     http://127.0.0.1:9000
+MinIO Console: http://127.0.0.1:9001
+```
+
+Default bucket:
+
+```text
+quickdrop-uploads
+```
+
+The Upload Service stores file bytes in MinIO and stores only metadata plus the object key in PostgreSQL.
+
+---
+
+## Example curl Commands
+
+### Gateway health check
+
+```bash
+curl -i http://127.0.0.1:8002/api/v1/health/
+```
+
+### Register user
+
+```bash
+curl -i -X POST http://127.0.0.1:8002/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: register-test-001" \
+  -d '{"email":"user@example.com","password":"Password123!"}'
+```
+
+### Login user
+
+```bash
+curl -i -X POST http://127.0.0.1:8002/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: login-test-001" \
+  -d '{"email":"user@example.com","password":"Password123!"}'
+```
+
+### Save token
+
+```bash
+TOKEN="paste_access_token_here"
+```
+
+### Get current user
+
+```bash
+curl -i http://127.0.0.1:8002/api/v1/auth/me \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Request-ID: auth-me-test-001"
+```
+
+### Upload file
+
+```bash
+echo "QuickDrop test file" > test-file.txt
+
+curl -i -X POST http://127.0.0.1:8002/api/v1/uploads/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Request-ID: upload-test-001" \
+  -F "file=@test-file.txt"
+```
+
+### List files
+
+```bash
+curl -i http://127.0.0.1:8002/api/v1/uploads/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Request-ID: upload-list-test-001"
+```
+
+### Download file
+
+```bash
+curl -L -X GET "http://127.0.0.1:8002/api/v1/uploads/1" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Request-ID: download-test-001" \
+  -o downloaded-file.txt
+```
+
+---
+
+## Automated Testing
+
+QuickDrop uses **Pytest** for automated integration testing.
+
+The current test suite verifies real running services rather than only testing isolated functions. These tests require Docker Compose to be running because they exercise the Auth Service, Upload Service, Gateway Service, PostgreSQL databases, and MinIO together.
+
+Install development dependencies:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+Start the local stack:
+
+```bash
+docker compose up -d
+```
+
+Run all tests:
+
+```bash
+python -m pytest tests -v
+```
+
+Expected current result:
+
+```text
+16 passed
+```
+
+Current test coverage:
+
+* Auth Service health check
+* Upload Service health check
+* Gateway Service health check
+* User registration
+* User login
+* JWT creation
+* Protected `/auth/me` access
+* Duplicate registration rejection
+* Wrong password rejection
+* Missing token rejection
+* Invalid token rejection
+* Authenticated file upload
+* File metadata persistence in PostgreSQL
+* File object storage through MinIO
+* File listing
+* File download byte verification
+* Non-existing file download rejection
+* Cross-user file ownership protection
+* Gateway auth routing
+* Gateway upload/list/download routing
+* Gateway missing-token behavior
+* Gateway `X-Request-ID` behavior
+
+These are integration tests because they verify that multiple system components work together correctly: HTTP routing, JWT authentication, database persistence, object storage, and Gateway forwarding.
+
+---
+
+## Security Features
+
+Current security features:
+
+* Password hashing with bcrypt
+* JWT-based stateless authentication
+* JWT expiration support
+* Protected routes
+* Bearer token validation
+* Invalid token rejection
+* Missing token rejection
+* Upload ownership checks
+* Cross-user file access prevention
+* Gateway forwarding of `Authorization` header
+* Gateway request tracing with `X-Request-ID`
+* Downstream service failure handling
+
+---
+
+## Observability Features
+
+Current observability features:
+
+* Gateway request logging
+* Request method logging
+* Request path logging
+* Response status code logging
+* Request duration logging
+* Request ID generation
+* Request ID propagation
+* Downstream target URL logging
+* Downstream response status logging
+* Downstream failure logging
 
 Example Gateway log flow:
 
 ```text
 Incoming request | method=GET path=/api/v1/uploads/ request_id=...
-Forwarding request to Upload Service | method=GET target_url=http://127.0.0.1:8001/api/v1/uploads/ request_id=...
-Upload Service responded | method=GET target_url=http://127.0.0.1:8001/api/v1/uploads/ status_code=200 request_id=...
+Forwarding request to Upload Service | method=GET target_url=http://upload_service:8001/api/v1/uploads/ request_id=...
+Upload Service responded | method=GET target_url=http://upload_service:8001/api/v1/uploads/ status_code=200 request_id=...
 Request completed | method=GET path=/api/v1/uploads/ status_code=200 duration_ms=... request_id=...
 ```
 
@@ -330,463 +600,179 @@ Gateway returns X-Request-ID in the response headers.
 Gateway forwards X-Request-ID to downstream services.
 ```
 
-Failure handling confirmed:
-
-| Scenario | Gateway Response |
-|---|---|
-| Missing token | `403 Forbidden` |
-| Invalid token | `401 Unauthorized` |
-| Auth Service down | `503 Service Unavailable` |
-| Upload Service down | `503 Service Unavailable` |
-
-Example Auth Service failure response:
-
-```json
-{
-  "detail": "Auth Service is unavailable"
-}
-```
-
-Example Upload Service failure response:
-
-```json
-{
-  "detail": "Upload Service is unavailable"
-}
-```
-
 ---
 
-## Authentication Flow
+## Completed Phases
 
-```text
-1. User registers through Gateway
-2. Gateway forwards request to Auth Service
-3. Auth Service hashes password and stores user in PostgreSQL
-4. User logs in through Gateway
-5. Gateway forwards login request to Auth Service
-6. Auth Service verifies credentials
-7. Auth Service returns JWT token
-8. Client sends JWT in Authorization header
-9. Gateway forwards Authorization header to downstream services
-10. Upload Service validates JWT
-11. Upload Service extracts user_id from JWT sub claim
-12. Upload Service performs user-specific file operations
-```
-
-Authorization header format:
-
-```text
-Authorization: Bearer <access_token>
-```
-
----
-
-## API Endpoints
-
-All client requests should go through the Gateway Service.
-
-Base URL:
-
-```text
-http://127.0.0.1:8002
-```
-
----
-
-### Gateway Health
-
-```text
-GET /api/v1/health/
-```
-
-Example:
-
-```bash
-curl -i http://127.0.0.1:8002/api/v1/health/
-```
-
----
-
-### Auth Routes Through Gateway
-
-Register user:
-
-```text
-POST /api/v1/auth/register
-```
-
-Login user:
-
-```text
-POST /api/v1/auth/login
-```
-
-Get current authenticated user:
-
-```text
-GET /api/v1/auth/me
-```
-
----
-
-### Upload Routes Through Gateway
-
-Upload file:
-
-```text
-POST /api/v1/uploads/
-```
-
-List authenticated user's files:
-
-```text
-GET /api/v1/uploads/
-```
-
-Download file by id:
-
-```text
-GET /api/v1/uploads/{file_id}
-```
-
----
-
-## Example curl Commands
-
-### Register
-
-```bash
-curl -i -X POST http://127.0.0.1:8002/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -H "X-Request-ID: register-test-001" \
-  -d '{"email":"user@example.com","password":"Password123!"}'
-```
-
----
-
-### Login
-
-```bash
-curl -i -X POST http://127.0.0.1:8002/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -H "X-Request-ID: login-test-001" \
-  -d '{"email":"user@example.com","password":"Password123!"}'
-```
-
----
-
-### Save Token
-
-```bash
-TOKEN="paste_access_token_here"
-```
-
----
-
-### Get Current User
-
-```bash
-curl -i http://127.0.0.1:8002/api/v1/auth/me \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Request-ID: auth-me-test-001"
-```
-
----
-
-### Upload File
-
-```bash
-echo "QuickDrop test file" > test-file.txt
-```
-
-```bash
-curl -i -X POST http://127.0.0.1:8002/api/v1/uploads/ \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Request-ID: upload-test-001" \
-  -F "file=@test-file.txt"
-```
-
----
-
-### List Files
-
-```bash
-curl -i http://127.0.0.1:8002/api/v1/uploads/ \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Request-ID: upload-list-test-001"
-```
-
----
-
-### Download File
-
-```bash
-curl -i http://127.0.0.1:8002/api/v1/uploads/1 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Request-ID: download-test-001"
-```
-
----
-
-## Local Setup
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/harshin93/quickdrop-backend.git
-cd quickdrop-backend
-```
-
----
-
-### 2. Create Virtual Environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
----
-
-### 3. Install Dependencies
-
-```bash
-python -m pip install fastapi uvicorn sqlalchemy psycopg2-binary "passlib[bcrypt]" "python-jose[cryptography]" python-dotenv pydantic-settings email-validator python-multipart httpx
-```
-
----
-
-### 4. Environment Variables
-
-Create a `.env` file in the project root.
-
-Example:
-
-```env
-AUTH_DATABASE_URL=postgresql://quickdrop_user:quickdrop_password@localhost:5432/quickdrop_auth
-UPLOAD_DATABASE_URL=postgresql://quickdrop_user:quickdrop_password@localhost:5432/quickdrop_upload
-JWT_SECRET_KEY=replace-with-your-own-secret-key
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
-
-Do not commit real secrets to GitHub.
-
----
-
-### 5. PostgreSQL Setup
-
-Example database setup:
-
-```sql
-CREATE USER quickdrop_user WITH PASSWORD 'quickdrop_password';
-
-CREATE DATABASE quickdrop_auth OWNER quickdrop_user;
-CREATE DATABASE quickdrop_upload OWNER quickdrop_user;
-
-GRANT ALL PRIVILEGES ON DATABASE quickdrop_auth TO quickdrop_user;
-GRANT ALL PRIVILEGES ON DATABASE quickdrop_upload TO quickdrop_user;
-```
-
----
-
-## Running the Services Locally
-
-Open three terminals from the project root.
-
-### Terminal 1: Auth Service
-
-```bash
-source .venv/bin/activate
-python -m uvicorn services.auth_service.app.main:app --reload --port 8000
-```
-
----
-
-### Terminal 2: Upload Service
-
-```bash
-source .venv/bin/activate
-python -m uvicorn services.upload_service.app.main:app --reload --port 8001
-```
-
----
-
-### Terminal 3: Gateway Service
-
-```bash
-source .venv/bin/activate
-python -m uvicorn services.gateway_service.app.main:app --reload --port 8002
-```
-
----
-
-## Swagger UI
-
-Auth Service Swagger:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Upload Service Swagger:
-
-```text
-http://127.0.0.1:8001/docs
-```
-
-Gateway Service Swagger:
-
-```text
-http://127.0.0.1:8002/docs
-```
-
-For normal client testing, use Gateway Swagger or Gateway curl commands.
-
----
-
-## Security Features
-
-Current security features:
-
-- Password hashing with bcrypt
-- JWT-based stateless authentication
-- Token expiration support
-- Protected routes
-- Upload ownership checks
-- Invalid token rejection
-- Missing token rejection
-- Gateway forwarding of `Authorization` header
-- Gateway request tracing with `X-Request-ID`
-- Downstream service failure handling
-
----
-
-## Observability Features
-
-Current observability features:
-
-- Gateway request logging
-- Request method logging
-- Request path logging
-- Response status code logging
-- Request duration logging
-- Request ID generation
-- Request ID propagation
-- Downstream target URL logging
-- Downstream response status logging
-- Downstream failure logging
-
-These features make it easier to debug request flow across services.
-
----
-
-## Current Status
-
-QuickDrop currently has three working services:
-
-```text
-Auth Service    :8000
-Upload Service  :8001
-Gateway Service :8002
-```
+### Phase 1: FastAPI Base Setup
 
 Completed:
 
+* Initialized FastAPI application
+* Created basic health check endpoint
+* Verified local server startup
+
+### Phase 2: Auth Service Skeleton
+
+Completed:
+
+* Created Auth Service structure
+* Added router structure
+* Added initial auth routes
+* Added health endpoint
+* Confirmed routes in Swagger UI
+
+### Phase 3: Full Authentication System
+
+Completed:
+
+* Integrated PostgreSQL with Auth Service
+* Added SQLAlchemy ORM setup
+* Created user model and schemas
+* Added password hashing using bcrypt
+* Added password verification
+* Added JWT creation and validation
+* Added register endpoint
+* Added login endpoint
+* Added protected `/auth/me` endpoint
+* Confirmed protected routes reject missing or invalid tokens
+
+JWT rule:
+
 ```text
-Phase 1: FastAPI setup
-Phase 2: Auth Service skeleton
-Phase 3: Full authentication system
-Phase 4: Upload Service
-Phase 5: API Gateway
-Phase 6: Gateway logging, observability, and production polish
+JWT sub = user_id
 ```
+
+### Phase 4: Upload Service
+
+Completed:
+
+* Created Upload Service microservice
+* Added upload endpoint
+* Added file metadata model
+* Added PostgreSQL metadata storage
+* Added JWT validation inside Upload Service
+* Extracted authenticated `user_id` from JWT
+* Linked uploaded files to authenticated users
+* Added file list endpoint
+* Added file download endpoint
+* Added ownership checks
+* Confirmed users cannot access files owned by another user
+
+### Phase 5: API Gateway
+
+Completed:
+
+* Created Gateway Service
+* Routed `/api/v1/auth/*` to Auth Service
+* Routed `/api/v1/uploads/*` to Upload Service
+* Forwarded Authorization headers
+* Confirmed register/login/me works through Gateway
+* Confirmed upload/list/download works through Gateway
+* Confirmed Upload Service ownership security is preserved through Gateway
+
+### Phase 6: Gateway Logging and Observability
+
+Completed:
+
+* Added centralized Gateway logging configuration
+* Added Gateway request logging middleware
+* Added `X-Request-ID` support
+* Preserved incoming request IDs
+* Generated request IDs when missing
+* Returned request IDs in responses
+* Forwarded request IDs downstream
+* Logged method, path, status code, duration, and downstream responses
+* Added clean downstream service unavailable handling
+
+### Phase 7: Docker Compose Local Orchestration
+
+Completed:
+
+* Added Docker Compose orchestration
+* Added Auth Service container
+* Added Upload Service container
+* Added Gateway Service container
+* Added separate Auth PostgreSQL container
+* Added separate Upload PostgreSQL container
+* Configured internal Docker networking
+* Configured Gateway to call services by Docker service name
+* Verified core flows through Docker Compose
+
+### Phase 8: MinIO Object Storage
+
+Completed:
+
+* Added MinIO container
+* Added MinIO bucket initialization container
+* Created `quickdrop-uploads` bucket
+* Replaced local upload file storage with object storage
+* Added `boto3` storage integration
+* Stored object keys in PostgreSQL metadata
+* Verified upload/list/download through Gateway using MinIO
+* Removed reliance on local upload volume for active storage
+
+### Phase 9: Automated Testing Setup
+
+Completed:
+
+* Added Pytest development dependency
+* Added health-check integration tests
+* Added Auth Service happy-path tests
+* Added Auth Service error-path tests
+* Added Upload Service happy-path tests
+* Added Upload Service error/security tests
+* Added Gateway routing tests
+* Verified MinIO-backed upload/list/download flow through tests
+* Verified cross-user file ownership protection through tests
+* Verified Gateway `X-Request-ID` behavior through tests
+* Confirmed full suite passes with 16 tests
 
 ---
 
 ## Upcoming Phases
 
-### Phase 7: Docker Compose / Local Orchestration
-
-Planned:
-
-- Run Auth Service, Upload Service, Gateway Service, and PostgreSQL using Docker Compose
-- Use environment variables properly
-- Confirm all services communicate inside Docker network
-- Make project easier to run with one command
-
----
-
-### Phase 8: Cloud/Object Storage Upgrade
-
-Planned:
-
-- Replace local file storage with S3-compatible storage
-- Use AWS S3 or MinIO for local development
-- Store only file metadata in PostgreSQL
-- Keep ownership checks and JWT security working
-
----
-
-### Phase 9: Testing
-
-Planned:
-
-- Add unit tests for Auth Service
-- Add unit tests for Upload Service
-- Add Gateway proxy tests
-- Add integration tests for register/login/upload/download flow
-- Use pytest
-
----
-
 ### Phase 10: Security Hardening
 
 Planned:
 
-- Add file size validation
-- Add allowed file type validation
-- Improve JWT error handling
-- Add rate limiting at Gateway
-- Add better CORS configuration
-- Review secrets and `.env` handling
-
----
+* Add file size validation
+* Add allowed file type validation
+* Improve JWT error consistency
+* Add rate limiting at Gateway
+* Add stricter CORS configuration
+* Review secrets and `.env` handling
 
 ### Phase 11: CI/CD
 
 Planned:
 
-- Add GitHub Actions
-- Run tests automatically on push
-- Add linting and formatting checks
-- Prepare for deployment pipeline
-
----
+* Add GitHub Actions workflow
+* Run tests automatically on push or pull request
+* Add linting checks
+* Add formatting checks
+* Prepare deployment pipeline foundation
 
 ### Phase 12: Deployment
 
 Planned:
 
-- Deploy services to a cloud environment
-- Use managed PostgreSQL or containerized PostgreSQL
-- Configure production environment variables
-- Expose only the Gateway publicly
-- Keep Auth and Upload services internal
-
----
+* Deploy services to a cloud environment
+* Use managed PostgreSQL or containerized PostgreSQL
+* Configure production environment variables
+* Expose only the Gateway publicly
+* Keep Auth and Upload services internal
 
 ### Phase 13: Final Interview and Resume Polish
 
 Planned:
 
-- Update README with architecture diagram
-- Add endpoint documentation
-- Add system design explanation
-- Add trade-offs section
-- Add resume bullets
-- Prepare interview Q&A for each service and architectural decision
+* Add architecture diagram
+* Add system design trade-offs
+* Add scaling discussion
+* Add failure-mode discussion
+* Add resume bullets
+* Prepare interview Q&A for each service and architectural decision
 
 ---
 
@@ -794,13 +780,37 @@ Planned:
 
 QuickDrop is a microservices-style backend system built with FastAPI.
 
-The system has an Auth Service for authentication, an Upload Service for file operations, and a Gateway Service that acts as the single entry point for clients.
+The system has an Auth Service for authentication, an Upload Service for file operations, and a Gateway Service that acts as the single public entry point for clients.
 
-The Auth Service issues JWTs after login. The JWT stores the authenticated user's `user_id` in the `sub` claim. The Upload Service validates the JWT and uses the `user_id` to ensure users can only access their own uploaded files.
+The Auth Service stores users in PostgreSQL, hashes passwords with bcrypt, and issues JWT access tokens after login. The JWT stores the authenticated user's `user_id` in the `sub` claim.
 
-The Gateway forwards requests to the correct downstream service and preserves important headers like `Authorization` and `X-Request-ID`.
+The Upload Service validates JWTs, extracts the `user_id`, stores uploaded file bytes in MinIO object storage, and stores file metadata in PostgreSQL. File access is protected with ownership checks, so users can only list or download their own files.
 
-In Phase 6, request tracing and logging were added so every request can be tracked by method, path, status code, duration, and request ID. This makes the system easier to debug and closer to production-style backend design.
+The Gateway forwards requests to the correct downstream service and preserves important headers like `Authorization` and `X-Request-ID`. It also logs request method, path, status code, duration, request ID, downstream target URL, and downstream response status.
+
+In Phase 9, automated integration tests were added using Pytest. These tests verify health checks, authentication, protected routes, upload/list/download behavior, MinIO object storage flow, ownership protection, and Gateway routing. This makes the project more reliable because regressions can be caught automatically instead of relying only on manual curl or Swagger testing.
+
+---
+
+## Current Status
+
+QuickDrop currently has a working Docker Compose-based local backend with:
+
+```text
+Auth Service       :8000
+Upload Service     :8001
+Gateway Service    :8002
+Auth PostgreSQL    :5433
+Upload PostgreSQL  :5434
+MinIO API          :9000
+MinIO Console      :9001
+```
+
+Current test result:
+
+```text
+16 passed
+```
 
 ---
 
