@@ -8,6 +8,13 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
+    max_upload_size_bytes: int = 5 * 1024 * 1024
+    allowed_upload_content_types: tuple[str, ...] = (
+        "text/plain",
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+    )
 
     s3_endpoint_url: str = "http://localhost:9000"
     s3_access_key: str = "quickdrop_minio_user"

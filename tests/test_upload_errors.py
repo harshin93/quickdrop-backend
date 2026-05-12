@@ -134,3 +134,53 @@ def test_user_cannot_download_another_users_file():
     assert response.json() == {
         "detail": "File not found",
     }
+
+
+def test_upload_too_large_file_returns_413():
+    access_token = create_access_token_for_test_user()
+
+    oversized_content = b"x" * ((5 * 1024 * 1024) + 1)
+
+    response = httpx.post(
+        f"{UPLOAD_SERVICE_URL}/api/v1/uploads/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        files={
+            "file": (
+                "oversized-file.txt",
+                oversized_content,
+                "text/plain",
+            )
+        },
+        timeout=15.0,
+    )
+
+    assert response.status_code == 413
+    assert response.json() == {
+        "detail": "File is too large",
+    }
+
+
+def test_upload_unsupported_file_type_returns_415():
+    access_token = create_access_token_for_test_user()
+
+    response = httpx.post(
+        f"{UPLOAD_SERVICE_URL}/api/v1/uploads/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        files={
+            "file": (
+                "script.sh",
+                b"#!/bin/bash\necho unsafe file type\n",
+                "application/x-sh",
+            )
+        },
+        timeout=10.0,
+    )
+
+    assert response.status_code == 415
+    assert response.json() == {
+        "detail": "Unsupported file type",
+    }

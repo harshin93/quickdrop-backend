@@ -112,3 +112,51 @@ def test_upload_list_and_download_file():
     assert download_response.content == file_content
     assert download_response.headers["content-type"].startswith("text/plain")
     assert filename in download_response.headers["content-disposition"]
+
+
+def test_upload_sanitizes_unsafe_filename():
+    access_token = create_access_token_for_test_user()
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+    }
+
+    original_filename = "../../evil file.txt"
+    expected_safe_filename = "evil_file.txt"
+    file_content = b"Filename sanitization test content."
+
+    upload_response = httpx.post(
+        f"{UPLOAD_SERVICE_URL}/api/v1/uploads/",
+        headers=headers,
+        files={
+            "file": (
+                original_filename,
+                file_content,
+                "text/plain",
+            )
+        },
+        timeout=10.0,
+    )
+
+    assert upload_response.status_code == 200
+
+    upload_data = upload_response.json()
+    uploaded_file = upload_data["file"]
+
+    assert uploaded_file["filename"] == expected_safe_filename
+    expected_prefix = "users/" + str(uploaded_file["user_id"]) + "/"
+    assert uploaded_file["file_path"].startswith(expected_prefix)
+    assert uploaded_file["file_path"].endswith(f"-{expected_safe_filename}")
+
+    file_id = uploaded_file["id"]
+
+    download_response = httpx.get(
+        f"{UPLOAD_SERVICE_URL}/api/v1/uploads/{file_id}",
+        headers=headers,
+        timeout=10.0,
+    )
+
+    assert download_response.status_code == 200
+    assert download_response.content == file_content
+    assert expected_safe_filename in download_response.headers["content-disposition"]
+    assert original_filename not in download_response.headers["content-disposition"]

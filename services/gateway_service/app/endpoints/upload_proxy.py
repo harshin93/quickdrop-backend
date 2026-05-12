@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import Response
 
 from services.gateway_service.app.core.config import settings
@@ -41,6 +41,38 @@ async def forward_upload_request(request: Request, path: str = ""):
         "request_id",
         request.headers.get("X-Request-ID", "unknown"),
     )
+
+    content_length = request.headers.get("content-length")
+
+    if request.method in {"POST", "PUT"} and content_length is not None:
+        try:
+            request_size = int(content_length)
+        except ValueError:
+            gateway_logger.warning(
+                "Upload rejected by Gateway: invalid content-length method=%s path=%s request_id=%s content_length=%s",
+                request.method,
+                request.url.path,
+                request_id,
+                content_length,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Content-Length header",
+            )
+
+        if request_size > settings.gateway_max_upload_request_size_bytes:
+            gateway_logger.warning(
+                "Upload rejected by Gateway: request too large method=%s path=%s request_id=%s request_size=%s max_size=%s",
+                request.method,
+                request.url.path,
+                request_id,
+                request_size,
+                settings.gateway_max_upload_request_size_bytes,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Request body is too large",
+            )
 
     headers = clean_request_headers(dict(request.headers))
     headers["X-Request-ID"] = request_id

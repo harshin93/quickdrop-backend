@@ -85,5 +85,5 @@ def test_get_me_with_invalid_token_returns_401():
 
     assert response.status_code == 401
     assert response.json() == {
-        "detail": "Could not validate credentials",
+        "detail": "Invalid or expired authentication token",
     }

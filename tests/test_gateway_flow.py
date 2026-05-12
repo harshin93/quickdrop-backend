@@ -184,3 +184,73 @@ def test_gateway_upload_without_token_returns_403():
 
     assert response.status_code == 403
     assert "X-Request-ID" in response.headers
+
+
+def test_gateway_allows_configured_cors_origin():
+    response = httpx.options(
+        f"{GATEWAY_SERVICE_URL}/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Authorization, Content-Type, X-Request-ID",
+        },
+        timeout=10.0,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_gateway_blocks_unconfigured_cors_origin():
+    response = httpx.options(
+        f"{GATEWAY_SERVICE_URL}/api/v1/auth/login",
+        headers={
+            "Origin": "http://malicious.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Authorization, Content-Type, X-Request-ID",
+        },
+        timeout=10.0,
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_gateway_adds_security_headers():
+    response = httpx.get(
+        f"{GATEWAY_SERVICE_URL}/api/v1/health/",
+        timeout=10.0,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+
+
+def test_gateway_rejects_oversized_upload_request():
+    access_token = create_gateway_access_token_for_test_user()
+
+    oversized_content = b"x" * ((6 * 1024 * 1024) + 1)
+
+    response = httpx.post(
+        f"{GATEWAY_SERVICE_URL}/api/v1/uploads/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+        files={
+            "file": (
+                "gateway-oversized-file.txt",
+                oversized_content,
+                "text/plain",
+            )
+        },
+        timeout=15.0,
+    )
+
+    assert response.status_code == 413
+    assert response.json() == {
+        "detail": "Request body is too large",
+    }
+    assert "X-Request-ID" in response.headers

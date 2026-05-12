@@ -11,5 +11,12 @@ class Settings(BaseSettings):
     auth_service_url: str = "http://127.0.0.1:8000"
     upload_service_url: str = "http://127.0.0.1:8001"
 
+    gateway_max_upload_request_size_bytes: int = 6 * 1024 * 1024
+
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 
 settings = Settings()

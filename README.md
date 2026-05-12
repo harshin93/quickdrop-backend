@@ -788,7 +788,7 @@ The Upload Service validates JWTs, extracts the `user_id`, stores uploaded file 
 
 The Gateway forwards requests to the correct downstream service and preserves important headers like `Authorization` and `X-Request-ID`. It also logs request method, path, status code, duration, request ID, downstream target URL, and downstream response status.
 
-In Phase 9, automated integration tests were added using Pytest. These tests verify health checks, authentication, protected routes, upload/list/download behavior, MinIO object storage flow, ownership protection, and Gateway routing. This makes the project more reliable because regressions can be caught automatically instead of relying only on manual curl or Swagger testing.
+In Phase 9, automated integration tests were added using Pytest. These tests verify health checks, authentication, protected routes, upload/list/download behavior, MinIO object storage flow, ownership protection, and Gateway routing. In Phase 10, the backend was hardened with upload size limits, content-type allowlisting, filename sanitization, consistent JWT errors, strict Gateway CORS, security response headers, secret/config documentation, and Gateway request-size protection. The test suite now verifies these security controls so regressions can be caught automatically instead of relying only on manual curl or Swagger testing.
 
 ---
 

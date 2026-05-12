@@ -1,4 +1,5 @@
 import logging
+import re
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -6,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from services.upload_service.app.core.config import settings
 from services.upload_service.app.core.security import get_current_user_id
 from services.upload_service.app.core.storage import (
     get_file_stream_from_storage,
@@ -17,6 +19,16 @@ from services.upload_service.app.models.file import FileMetadata
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
+
+
+def sanitize_filename(filename: str) -> str:
+    filename = filename.replace("\\\\", "/").split("/")[-1]
+    sanitized_filename = re.sub(r"[^A-Za-z0-9._-]", "_", filename).strip("._")
+
+    if not sanitized_filename:
+        return f"upload-{uuid4().hex}.bin"
+
+    return sanitized_filename[:100]
 
 
 def get_upload_file_size(file: UploadFile) -> int:
@@ -46,10 +58,37 @@ def upload_file(
             detail="Filename is required",
         )
 
+    if file.content_type not in settings.allowed_upload_content_types:
+        logger.warning(
+            "Upload failed: unsupported content type user_id=%s filename=%s content_type=%s allowed_types=%s",
+            user_id,
+            file.filename,
+            file.content_type,
+            settings.allowed_upload_content_types,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported file type",
+        )
+
     try:
+        safe_filename = sanitize_filename(file.filename)
         file_size = get_upload_file_size(file)
 
-        object_key = f"users/{user_id}/{uuid4()}-{file.filename}"
+        if file_size > settings.max_upload_size_bytes:
+            logger.warning(
+                "Upload failed: file too large user_id=%s filename=%s file_size=%s max_size=%s",
+                user_id,
+                file.filename,
+                file_size,
+                settings.max_upload_size_bytes,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File is too large",
+            )
+
+        object_key = f"users/{user_id}/{uuid4()}-{safe_filename}"
 
         upload_file_to_storage(
             file=file,
@@ -58,7 +97,7 @@ def upload_file(
 
         file_record = FileMetadata(
             user_id=user_id,
-            filename=file.filename,
+            filename=safe_filename,
             file_path=object_key,
             content_type=file.content_type,
             file_size=file_size,
