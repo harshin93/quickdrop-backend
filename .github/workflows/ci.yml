@@ -1,0 +1,88 @@
+name: QuickDrop CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Build and test QuickDrop backend
+    runs-on: ubuntu-latest
+
+    env:
+      JWT_SECRET_KEY: ci-secret-change-me
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-runtime.txt
+          python -m pip install -r requirements-dev.txt
+
+      - name: Validate Docker Compose file
+        run: docker compose config
+
+      - name: Build Docker images
+        run: docker compose build
+
+      - name: Start Docker Compose stack
+        run: docker compose up -d
+
+      - name: Show running containers
+        run: docker compose ps
+
+      - name: Wait for services to become ready
+        run: |
+          python - <<'PY'
+          import time
+          import httpx
+
+          urls = [
+              "http://127.0.0.1:8000/api/v1/health",
+              "http://127.0.0.1:8001/api/v1/health",
+              "http://127.0.0.1:8002/api/v1/health",
+          ]
+
+          deadline = time.time() + 90
+
+          for url in urls:
+              while True:
+                  try:
+                      response = httpx.get(url, timeout=5)
+                      if response.status_code == 200:
+                          print(f"Ready: {url}")
+                          break
+                      print(f"Waiting for {url}, status={response.status_code}")
+                  except Exception as exc:
+                      print(f"Waiting for {url}: {exc}")
+
+                  if time.time() > deadline:
+                      raise RuntimeError(f"Service did not become ready: {url}")
+
+                  time.sleep(3)
+          PY
+
+      - name: Run Pytest integration suite
+        run: python -m pytest tests -v
+
+      - name: Show Docker Compose logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Shut down Docker Compose stack
+        if: always()
+        run: docker compose down -v
