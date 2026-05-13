@@ -1,6 +1,6 @@
 # QuickDrop Backend
 
-QuickDrop is a microservices-style backend system built with **FastAPI**. It demonstrates production-oriented backend engineering concepts such as service separation, JWT authentication, secure password hashing, API Gateway routing, PostgreSQL persistence, S3-compatible object storage, request tracing, structured logging, Docker Compose orchestration, and automated integration testing.
+QuickDrop is a microservices-style backend system built with **FastAPI**. It demonstrates production-oriented backend engineering concepts such as service separation, JWT authentication, secure password hashing, API Gateway routing, PostgreSQL persistence, S3-compatible object storage, request tracing, structured logging, Docker Compose orchestration, automated integration testing, security hardening, and Docker Compose-based CI/CD with GitHub Actions.
 
 The project is being built incrementally in phases to simulate how a backend system evolves from a simple API into a more realistic distributed backend.
 
@@ -23,6 +23,8 @@ The goal of QuickDrop is to build an interview-ready backend system that demonst
 * Production-style logging and error handling
 * Docker Compose local orchestration
 * Automated integration testing with Pytest
+* Security hardening for file uploads, JWT errors, CORS, and response headers
+* CI/CD readiness using GitHub Actions
 
 ---
 
@@ -46,7 +48,7 @@ The **Gateway Service** is the public entry point for the system. Clients call t
 
 The **Auth Service** owns user registration, login, password hashing, JWT creation, and protected user profile access.
 
-The **Upload Service** owns authenticated file upload, metadata persistence, MinIO object storage, file listing, file download, and ownership checks.
+The **Upload Service** owns authenticated file upload, metadata persistence, MinIO object storage, file listing, file download, file validation, filename sanitization, and ownership checks.
 
 ---
 
@@ -68,6 +70,9 @@ Responsibilities:
 * Log downstream response status codes
 * Log request duration
 * Return clean `503 Service Unavailable` responses when downstream services are unavailable
+* Enforce strict CORS rules
+* Add security response headers
+* Reject oversized upload requests before forwarding them downstream
 
 Default local port:
 
@@ -91,6 +96,7 @@ Responsibilities:
 * Generate JWT access tokens
 * Store the authenticated user ID in the JWT `sub` claim
 * Validate JWTs for protected routes
+* Return consistent invalid-token errors
 * Expose protected `/auth/me` endpoint
 
 Default local port:
@@ -105,6 +111,12 @@ Database port exposed on host:
 5433
 ```
 
+Health endpoint:
+
+```http
+GET /api/v1/health
+```
+
 ---
 
 ### Upload Service
@@ -114,7 +126,11 @@ The Upload Service is responsible for authenticated file operations.
 Responsibilities:
 
 * Validate JWT Bearer tokens
+* Return consistent invalid-token errors
 * Extract authenticated `user_id` from JWT `sub` claim
+* Validate upload file size
+* Validate allowed upload content types
+* Sanitize unsafe filenames
 * Upload files to MinIO object storage
 * Store file metadata in PostgreSQL
 * Store MinIO object keys in `FileMetadata.file_path`
@@ -132,6 +148,12 @@ Database port exposed on host:
 
 ```text
 5434
+```
+
+Health endpoint:
+
+```http
+GET /health
 ```
 
 MinIO API port:
@@ -173,6 +195,7 @@ users/{user_id}/{uuid}-{filename}
 * **HTTP Client:** httpx
 * **Testing:** Pytest
 * **Containerization:** Docker and Docker Compose
+* **CI/CD:** GitHub Actions
 * **Validation/Settings:** Pydantic and pydantic-settings
 
 ---
@@ -180,51 +203,63 @@ users/{user_id}/{uuid}-{filename}
 ## Project Structure
 
 ```text
-services/
-├── auth_service/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── db/
-│   │   ├── endpoints/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   └── main.py
-│   ├── Dockerfile
-│   └── requirements.txt
+.
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── docker-compose.yml
+├── Dockerfile
+├── Makefile
+├── pyproject.toml
+├── requirements.txt
+├── requirements-runtime.txt
+├── requirements-dev.txt
+├── README.md
+├── services/
+│   ├── auth_service/
+│   │   ├── app/
+│   │   │   ├── api/
+│   │   │   ├── core/
+│   │   │   ├── db/
+│   │   │   ├── endpoints/
+│   │   │   ├── models/
+│   │   │   ├── schemas/
+│   │   │   └── main.py
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   ├── upload_service/
+│   │   └── app/
+│   │       ├── api/
+│   │       ├── core/
+│   │       │   ├── config.py
+│   │       │   ├── logging.py
+│   │       │   ├── security.py
+│   │       │   └── storage.py
+│   │       ├── db/
+│   │       ├── models/
+│   │       ├── schemas/
+│   │       └── main.py
+│   │
+│   └── gateway_service/
+│       └── app/
+│           ├── api/
+│           ├── core/
+│           │   ├── config.py
+│           │   └── logging.py
+│           ├── endpoints/
+│           │   ├── auth_proxy.py
+│           │   ├── health.py
+│           │   └── upload_proxy.py
+│           └── main.py
 │
-├── upload_service/
-│   └── app/
-│       ├── api/
-│       ├── core/
-│       │   ├── config.py
-│       │   ├── logging.py
-│       │   ├── security.py
-│       │   └── storage.py
-│       ├── db/
-│       ├── models/
-│       ├── schemas/
-│       └── main.py
-│
-├── gateway_service/
-│   └── app/
-│       ├── api/
-│       ├── core/
-│       │   ├── config.py
-│       │   └── logging.py
-│       ├── endpoints/
-│       │   ├── auth_proxy.py
-│       │   ├── health.py
-│       │   └── upload_proxy.py
-│       └── main.py
-│
-tests/
-├── test_auth_errors.py
-├── test_auth_flow.py
-├── test_gateway_flow.py
-├── test_health.py
-├── test_upload_errors.py
-└── test_upload_flow.py
+└── tests/
+    ├── test_auth_errors.py
+    ├── test_auth_flow.py
+    ├── test_gateway_flow.py
+    ├── test_health.py
+    ├── test_upload_errors.py
+    └── test_upload_flow.py
 ```
 
 ---
@@ -286,20 +321,30 @@ Authorization header format:
 Authorization: Bearer <access_token>
 ```
 
+JWT rule:
+
+```text
+JWT sub = user_id
+```
+
 ---
 
 ## File Upload Flow
 
 ```text
-1. Authenticated client uploads file through Gateway.
-2. Gateway forwards multipart request to Upload Service.
-3. Upload Service validates JWT.
-4. Upload Service extracts user_id from JWT sub claim.
-5. Upload Service creates a MinIO object key.
-6. Upload Service uploads file bytes to MinIO.
-7. Upload Service stores metadata in PostgreSQL.
-8. Upload Service stores the MinIO object key in file_path.
-9. User can list and download only their own files.
+1. Authenticated client uploads a file through Gateway.
+2. Gateway checks request size before forwarding.
+3. Gateway forwards the multipart request to Upload Service.
+4. Upload Service validates the JWT.
+5. Upload Service extracts user_id from JWT sub claim.
+6. Upload Service validates file size.
+7. Upload Service validates content type.
+8. Upload Service sanitizes the original filename.
+9. Upload Service creates a MinIO object key.
+10. Upload Service uploads file bytes to MinIO.
+11. Upload Service stores metadata in PostgreSQL.
+12. Upload Service stores the MinIO object key in file_path.
+13. User can list and download only their own files.
 ```
 
 Example object key:
@@ -329,7 +374,7 @@ source .venv/bin/activate
 ### 3. Install runtime dependencies
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-runtime.txt
 ```
 
 ### 4. Install development dependencies
@@ -337,6 +382,32 @@ python -m pip install -r requirements.txt
 ```bash
 python -m pip install -r requirements-dev.txt
 ```
+
+---
+
+## Environment Configuration
+
+The project includes an example environment file:
+
+```text
+.env.example
+```
+
+This file documents expected configuration values such as JWT settings, database URLs, service URLs, CORS settings, upload limits, and MinIO/S3 settings.
+
+Important rule:
+
+```text
+Do not commit real secrets to Git.
+```
+
+For local development, create a `.env` file when needed:
+
+```bash
+cp .env.example .env
+```
+
+Then update values locally.
 
 ---
 
@@ -386,15 +457,15 @@ Use `docker compose down -v` carefully because it removes local PostgreSQL and M
 
 ## Docker Compose Services
 
-| Service               | Container                       |      Host Port | Purpose                            |
-| --------------------- | ------------------------------- | -------------: | ---------------------------------- |
-| `gateway_service`     | `quickdrop-gateway-service`     |         `8002` | Public API entry point             |
-| `auth_service`        | `quickdrop-auth-service`        |         `8000` | Authentication and JWT issuance    |
-| `upload_service`      | `quickdrop-upload-service`      |         `8001` | File upload/list/download          |
-| `auth_postgres`       | `quickdrop-auth-postgres`       |         `5433` | Auth database                      |
-| `upload_postgres`     | `quickdrop-upload-postgres`     |         `5434` | Upload metadata database           |
-| `minio`               | `quickdrop-minio`               | `9000`, `9001` | Object storage and console         |
-| `minio_create_bucket` | `quickdrop-minio-create-bucket` |            N/A | Creates `quickdrop-uploads` bucket |
+| Service               | Container                       | Host Port    | Purpose                         |
+| --------------------- | ------------------------------- | ------------ | ------------------------------- |
+| `gateway_service`     | `quickdrop-gateway-service`     | `8002`       | Public API entry point          |
+| `auth_service`        | `quickdrop-auth-service`        | `8000`       | Authentication and JWT issuance |
+| `upload_service`      | `quickdrop-upload-service`      | `8001`       | File upload/list/download       |
+| `auth_postgres`       | `quickdrop-auth-postgres`       | `5433`       | Auth database                   |
+| `upload_postgres`     | `quickdrop-upload-postgres`     | `5434`       | Upload metadata database        |
+| `minio`               | `quickdrop-minio`               | `9000, 9001` | Object storage and console      |
+| `minio_create_bucket` | `quickdrop-minio-create-bucket` | N/A          | Creates `quickdrop-uploads`     |
 
 ---
 
@@ -507,6 +578,12 @@ Start the local stack:
 docker compose up -d
 ```
 
+Check running containers:
+
+```bash
+docker compose ps
+```
+
 Run all tests:
 
 ```bash
@@ -516,10 +593,10 @@ python -m pytest tests -v
 Expected current result:
 
 ```text
-16 passed
+23 passed
 ```
 
-Current test coverage:
+Current test coverage includes:
 
 * Auth Service health check
 * Upload Service health check
@@ -542,9 +619,67 @@ Current test coverage:
 * Gateway auth routing
 * Gateway upload/list/download routing
 * Gateway missing-token behavior
+* Gateway configured CORS origin behavior
+* Gateway blocked CORS origin behavior
+* Gateway security response headers
+* Gateway oversized upload request rejection
 * Gateway `X-Request-ID` behavior
+* Upload file size validation
+* Upload content-type validation
+* Safer filename sanitization
 
-These are integration tests because they verify that multiple system components work together correctly: HTTP routing, JWT authentication, database persistence, object storage, and Gateway forwarding.
+These are integration tests because they verify that multiple system components work together correctly: HTTP routing, JWT authentication, database persistence, object storage, security validation, and Gateway forwarding.
+
+---
+
+## CI/CD
+
+QuickDrop uses **GitHub Actions** for continuous integration.
+
+The CI workflow is defined in:
+
+```text
+.github/workflows/ci.yml
+```
+
+The workflow runs automatically on:
+
+```text
+push to main
+pull_request to main
+```
+
+The CI pipeline performs these steps:
+
+```text
+1. Check out the repository
+2. Set up Python 3.11
+3. Install runtime and development dependencies
+4. Validate the Docker Compose configuration
+5. Build Docker images
+6. Start the full Docker Compose stack
+7. Show running containers
+8. Wait for Auth, Upload, and Gateway readiness endpoints
+9. Run the Pytest integration suite
+10. Print Docker Compose logs on failure
+11. Shut down the Docker Compose stack
+```
+
+CI readiness endpoints:
+
+```text
+Auth Service:    http://127.0.0.1:8000/api/v1/health
+Upload Service:  http://127.0.0.1:8001/health
+Gateway Service: http://127.0.0.1:8002/api/v1/health/
+```
+
+This CI approach is intentionally Docker Compose-based because the tests are integration tests. They require real containers for the Auth Service, Upload Service, Gateway Service, PostgreSQL databases, and MinIO object storage.
+
+Interview explanation:
+
+```text
+The CI pipeline starts the same Docker Compose environment used in local development, waits for services to become reachable, then runs the full Pytest integration suite. This validates not only Python code, but also container builds, service startup, database connectivity, MinIO connectivity, JWT authentication, Gateway routing, security checks, and inter-service communication.
+```
 
 ---
 
@@ -561,6 +696,14 @@ Current security features:
 * Missing token rejection
 * Upload ownership checks
 * Cross-user file access prevention
+* Upload file size validation
+* Upload content-type allowlisting
+* Safer filename sanitization
+* Consistent invalid JWT error responses
+* Strict Gateway CORS configuration
+* Gateway security response headers
+* Gateway request-size protection before forwarding uploads
+* Secret and configuration documentation through `.env.example`
 * Gateway forwarding of `Authorization` header
 * Gateway request tracing with `X-Request-ID`
 * Downstream service failure handling
@@ -726,42 +869,53 @@ Completed:
 * Verified MinIO-backed upload/list/download flow through tests
 * Verified cross-user file ownership protection through tests
 * Verified Gateway `X-Request-ID` behavior through tests
-* Confirmed full suite passes with 16 tests
+
+### Phase 10: Security Hardening
+
+Completed:
+
+* Added upload file size validation
+* Added allowed upload content-type validation
+* Added safer filename sanitization
+* Added consistent invalid JWT error responses across Auth Service and Upload Service
+* Added strict Gateway CORS configuration
+* Added Gateway security response headers
+* Added secret/config documentation through `.env.example`
+* Added Gateway request-size protection before forwarding uploads
+* Confirmed full suite passes with 23 tests
+
+### Phase 11: CI/CD and Deployment Readiness
+
+Completed:
+
+* Added GitHub Actions workflow
+* Configured CI to run on push and pull request to `main`
+* Installed runtime and development dependencies in CI
+* Added Docker Compose config validation in CI
+* Added Docker image build validation in CI
+* Started the full Docker Compose stack in CI
+* Added readiness checks for Auth, Upload, and Gateway services
+* Ran the full Pytest integration suite in CI
+* Added Docker Compose logs on failure for easier debugging
+* Added automatic Docker Compose cleanup after CI runs
+* Fixed CI readiness check to use the correct Upload Service `/health` endpoint
+* Confirmed GitHub Actions workflow passes
 
 ---
 
 ## Upcoming Phases
 
-### Phase 10: Security Hardening
-
-Planned:
-
-* Add file size validation
-* Add allowed file type validation
-* Improve JWT error consistency
-* Add rate limiting at Gateway
-* Add stricter CORS configuration
-* Review secrets and `.env` handling
-
-### Phase 11: CI/CD
-
-Planned:
-
-* Add GitHub Actions workflow
-* Run tests automatically on push or pull request
-* Add linting checks
-* Add formatting checks
-* Prepare deployment pipeline foundation
-
 ### Phase 12: Deployment
 
 Planned:
 
-* Deploy services to a cloud environment
-* Use managed PostgreSQL or containerized PostgreSQL
-* Configure production environment variables
+* Prepare deployment strategy
+* Decide target deployment platform
+* Configure production-style environment variables
 * Expose only the Gateway publicly
-* Keep Auth and Upload services internal
+* Keep Auth and Upload services internal where practical
+* Decide database and object storage strategy for deployment
+* Document deployment trade-offs
 
 ### Phase 13: Final Interview and Resume Polish
 
@@ -784,11 +938,13 @@ The system has an Auth Service for authentication, an Upload Service for file op
 
 The Auth Service stores users in PostgreSQL, hashes passwords with bcrypt, and issues JWT access tokens after login. The JWT stores the authenticated user's `user_id` in the `sub` claim.
 
-The Upload Service validates JWTs, extracts the `user_id`, stores uploaded file bytes in MinIO object storage, and stores file metadata in PostgreSQL. File access is protected with ownership checks, so users can only list or download their own files.
+The Upload Service validates JWTs, extracts the `user_id`, validates upload size and content type, sanitizes filenames, stores uploaded file bytes in MinIO object storage, and stores file metadata in PostgreSQL. File access is protected with ownership checks, so users can only list or download their own files.
 
-The Gateway forwards requests to the correct downstream service and preserves important headers like `Authorization` and `X-Request-ID`. It also logs request method, path, status code, duration, request ID, downstream target URL, and downstream response status.
+The Gateway forwards requests to the correct downstream service and preserves important headers like `Authorization` and `X-Request-ID`. It also logs request method, path, status code, duration, request ID, downstream target URL, and downstream response status. The Gateway also applies strict CORS configuration, security response headers, and request-size protection before forwarding uploads.
 
-In Phase 9, automated integration tests were added using Pytest. These tests verify health checks, authentication, protected routes, upload/list/download behavior, MinIO object storage flow, ownership protection, and Gateway routing. In Phase 10, the backend was hardened with upload size limits, content-type allowlisting, filename sanitization, consistent JWT errors, strict Gateway CORS, security response headers, secret/config documentation, and Gateway request-size protection. The test suite now verifies these security controls so regressions can be caught automatically instead of relying only on manual curl or Swagger testing.
+The backend includes automated integration tests using Pytest. These tests verify health checks, authentication, protected routes, upload/list/download behavior, MinIO object storage flow, ownership protection, Gateway routing, CORS behavior, security headers, upload validation, and request-size protection.
+
+The project also includes a Docker Compose-based GitHub Actions CI pipeline. On every push or pull request to `main`, CI builds the Docker images, starts the full backend stack, waits for service readiness, runs the 23-test integration suite, prints logs on failure, and shuts the stack down cleanly.
 
 ---
 
@@ -797,19 +953,25 @@ In Phase 9, automated integration tests were added using Pytest. These tests ver
 QuickDrop currently has a working Docker Compose-based local backend with:
 
 ```text
-Auth Service       :8000
-Upload Service     :8001
-Gateway Service    :8002
-Auth PostgreSQL    :5433
-Upload PostgreSQL  :5434
-MinIO API          :9000
-MinIO Console      :9001
+Auth Service        :8000
+Upload Service      :8001
+Gateway Service     :8002
+Auth PostgreSQL     :5433
+Upload PostgreSQL   :5434
+MinIO API           :9000
+MinIO Console       :9001
 ```
 
-Current test result:
+Current local test result:
 
 ```text
-16 passed
+23 passed
+```
+
+Current CI/CD status:
+
+```text
+GitHub Actions Docker Compose CI passing
 ```
 
 ---
